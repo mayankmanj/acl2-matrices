@@ -6,7 +6,7 @@
 (include-book "equality")
 (local (include-book "arithmetic-5/top" :dir :system))
 
-(local (in-theory (e/d (m-=--rows m-=--cols) (m-=))))
+(local (in-theory (e/d (m-=--rows m-=--cols summable-p) (m-=))))
 
 (defcong m-= equal (m-+--cols m1 m2 row cols) 1
   :hints (("Goal" :in-theory (e/d (m-+--cols) ()))))
@@ -27,60 +27,49 @@
   :hints (("Goal" :in-theory (e/d (m-+) ()))))
 
 (defthm m-+-get-cols
-  (implies (<= c (nfix cols))
-           (equal (m-get-aux (m-+--cols m1 m2 r cols) r c)
-                  (+ (m-get m1 r c) (m-get m2 r c))))
-  :hints (("Goal" :in-theory (e/d (m-get-aux m-+--cols) ()))))
-
-(defthm m-+-row-append-get-aux-1
-  (implies (<= c (nfix col))
-           (equal (m-get-aux (append (m-+--cols m1 m2 row col) ls) row c)
-                  (m-get-aux (m-+--cols m1 m2 row col) row c)))
-  :hints (("Goal" :in-theory (e/d (m-get-aux m-+--cols) ()))))
-
-(defthm m-+-row-append-get-aux-2
-  (implies (or (not (equal row r)) (< col c))
-           (equal (m-get-aux (append (m-+--cols m1 m2 row col) ls) r c)
-                  (m-get-aux ls r c)))
+  (implies (and (summable-p m1 m2)
+                (not (zp cols))
+                (not (zp r))
+                (not (zp row))
+                (not (zp c)))
+           (equal (m-get-aux (m-+--cols m1 m2 row cols) r c)
+                  (if (and (<= c cols) (equal r row))
+                      (make-melem :r (nfix r) :c c :val (+ (m-get m1 r c)
+                                                           (m-get m2 r c)))
+                    nil)))
   :hints (("Goal" :in-theory (e/d (m-get-aux m-+--cols) ()))))
 
 (defthm m-+-row-get-aux-1
-  (implies (and (<= (nfix r) (nfix row)) (<= c (matrix->cols m1))
-                (equal (matrix->cols m1) (matrix->cols m2)))
+  (implies (and (summable-p m1 m2)
+                (not (zp r))
+                (not (zp row))
+                (not (zp c)))
            (equal (m-get-aux (m-+--rows m1 m2 row) r c)
-                  (m-get-aux (m-+--cols m1 m2 r (matrix->cols m1)) r c)))
-  :hints (("Goal" :in-theory (e/d (m-get-aux m-+--rows) ()))
-          ("Subgoal *1/2" :cases ((< r row)))))
-
-(defthm m-+-row-get-row-out-of-bounds
-  (implies (and (natp r) (natp row) (< row r))
-           (equal (m-get-aux (m-+--rows m1 m2 row) r c) 0))
-  :hints (("Goal" :in-theory (e/d (m-get-aux m-+--rows) ()))))
-
-(defthm m-+-row-get-col-out-of-bounds
-  (implies (< (matrix->cols m1) c)
-           (equal (m-get-aux (m-+--rows m1 m2 row) r c)
-                  0))
-  :hints (("Goal" :in-theory (e/d (m-get-aux m-+--rows) ()))))
-
-(defthm m-+-get-rows
-  (implies (and (natp r) (natp rows) (<= r rows) (natp c)
-                (equal (matrix->cols m1) (matrix->cols m2)))
-           (equal (m-get-aux (m-+--rows m1 m2 rows) r c)
-                  (+ (m-get m1 r c) (m-get m2 r c))))
-  :hints (("Goal" :in-theory (e/d (m-get-aux m-+--rows) ()))
-          ("Subgoal *1/5" :cases ((equal r rows)))
-          ("Subgoal *1/5.1" :cases ((<= c (matrix->cols m1))))
-          ("Subgoal *1/4" :cases ((<= c (matrix->cols m1))))))
+                  (if (<= r row)
+                      (m-get-aux (m-+--cols m1 m2 r (matrix->cols m1)) r c)
+                    nil)))
+  :hints (("Goal" :in-theory (e/d (m-get-aux m-+--rows) (summable-p)))
+          ("Subgoal *1/8" :in-theory (e/d (m-+--cols m-get-aux) (m-+-get-cols))
+                          :use ((:instance m-+-get-cols
+                                           (row 1)
+                                           (cols (matrix->cols m1)))))
+          ("Subgoal *1/6" :cases ((equal r 1))
+                          :in-theory (e/d (m-+--cols) ())
+                          :use ((:instance m-+-get-cols
+                                           (row 1)
+                                           (cols (matrix->cols m1)))))
+          ("Subgoal *1/3" :use ((:instance m-+-get-cols
+                                           (cols (matrix->cols m1))))
+                          :in-theory (e/d (m-+--cols) ()))
+          ("Subgoal *1/2" :use ((:instance m-+-get-cols
+                                           (cols (matrix->cols m1))))
+                          :in-theory (e/d (m-+--cols m-get-aux) ()))))
 
 (defthm m-+-get-sum
-  (implies (and (equal (matrix->rows m1) (matrix->rows m2))
-                (equal (matrix->cols m1) (matrix->cols m2)))
+  (implies (summable-p m1 m2)
            (equal (m-get (m-+ m1 m2) r c)
                   (+ (m-get m1 r c) (m-get m2 r c))))
-  :hints (("Goal''" :in-theory (e/d () ())
-                  :expand ((m-get (m-+ m1 m2) r c)))
-          ("Goal'''" :expand (m-+ m1 m2))))
+  :hints (("Goal" :in-theory (e/d (m-get m-+) ()))))
 
 (defthm m-+-iden-right-cols
   (m-=--cols (m-+ m1 (zeros-r-c (matrix->rows m1) (matrix->cols m1))) m1 r c)
@@ -103,28 +92,16 @@
   (m-= (m-+ (zeros-r-c (matrix->rows m1) (matrix->cols m1)) m1) m1)
   :hints (("Goal" :in-theory (e/d (m-=) ()))))
 
-(defthm m-+-dim-not-equal
-  (implies (or (not (equal (matrix->rows m1) (matrix->rows m2)))
-               (not (equal (matrix->cols m1) (matrix->cols m2))))
-           (equal (m-get (m-+ m1 m2) r c) 0))
-  :hints (("Goal" :in-theory (e/d (m-+) ()))))
-
 (defthm m-+-assoc-cols
-  (implies (and (equal (matrix->rows m1) (matrix->rows m2))
-                (equal (matrix->rows m2) (matrix->rows m3))
-                (equal (matrix->cols m1) (matrix->cols m2))
-                (equal (matrix->cols m2) (matrix->cols m3)))
+  (implies (and (summable-p m1 m2)
+                (summable-p m2 m3))
            (equal (m-+--cols (m-+ m1 m2) m3 r c)
                   (m-+--cols m1 (m-+ m2 m3) r c)))
-  :hints (("Goal" :in-theory (e/d (m-+--cols) (m-+-get-sum)))
-          ("Subgoal *1/2" :use ((:instance m-+-get-sum)
-                                (:instance m-+-get-sum (m1 m2) (m2 m3))))))
+  :hints (("Goal" :in-theory (e/d (m-+--cols) ()))))
 
 (defthm m-+-assoc-rows
-  (implies (and (equal (matrix->rows m1) (matrix->rows m2))
-                (equal (matrix->rows m2) (matrix->rows m3))
-                (equal (matrix->cols m1) (matrix->cols m2))
-                (equal (matrix->cols m2) (matrix->cols m3)))
+  (implies (and (summable-p m1 m2)
+                (summable-p m2 m3))
            (equal (m-+--rows (m-+ m1 m2) m3 r)
                   (m-+--rows m1 (m-+ m2 m3) r)))
   :hints (("Goal" :in-theory (e/d (m-+--rows) ()))))
@@ -132,24 +109,20 @@
 (defthm m-+-assoc
   (equal (m-+ (m-+ m1 m2) m3)
          (m-+ m1 (m-+ m2 m3)))
-  :hints (("Goal" :in-theory (e/d (m-+ m-+--rows) ()))
-          ("Subgoal 7" :in-theory (e/d (m-+) (m-+-assoc-rows))
-                       :use (:instance m-+-assoc-rows (r (matrix->rows m1))))))
+  :hints (("Goal" :cases ((and (summable-p m1 m2)
+                               (summable-p m2 m3))))
+          ("Subgoal 2" :in-theory (e/d (m-+--rows m-+) ()))
+          ("Subgoal 1" :use ((:instance m-+-assoc-rows (r (matrix->rows m1))))
+                       :in-theory (e/d (m-+) ()))))
 
 (defthmd m-+-comm-cols
-  (implies (and (equal (matrix->rows m1) (matrix->rows m2))
-                (equal (matrix->rows m2) (matrix->rows m3))
-                (equal (matrix->cols m1) (matrix->cols m2))
-                (equal (matrix->cols m2) (matrix->cols m3)))
-          (equal (m-+--cols m1 m2 r c)
-                 (m-+--cols m2 m1 r c)))
+  (implies (summable-p m1 m2)
+           (equal (m-+--cols m1 m2 r c)
+                  (m-+--cols m2 m1 r c)))
   :hints (("Goal" :in-theory (e/d (m-+--cols) ()))))
 
 (defthmd m-+-comm-rows
-  (implies (and (equal (matrix->rows m1) (matrix->rows m2))
-                (equal (matrix->rows m2) (matrix->rows m3))
-                (equal (matrix->cols m1) (matrix->cols m2))
-                (equal (matrix->cols m2) (matrix->cols m3)))
+  (implies (summable-p m1 m2)
            (equal (m-+--rows m1 m2 r)
                   (m-+--rows m2 m1 r)))
   :hints (("Goal" :in-theory (e/d (m-+--rows m-+-comm-cols) ()))))
