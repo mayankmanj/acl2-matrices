@@ -1,0 +1,3 @@
+* Matrix operations formalized in ACL2
+
+Work in progress!
